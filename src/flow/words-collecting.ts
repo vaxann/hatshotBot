@@ -9,10 +9,10 @@ import _ from "lodash";
 import async from "async"
 
 import * as Db from "../database";
-import {sendOrStore, userToText} from "../utils";
+import {sendOrStore, playerToText} from "../utils";
 import Log from "../log";
 import {Player} from "../database";
-import {buildPairs} from "./pairs-building";
+import {buildTeams} from "./teams-building";
 const log = Log(module);
 
 
@@ -27,9 +27,9 @@ export function startWordsCollecting(bot: TelegramBot, msg: Message) {
 
             data.flow = "words-collecting";
 
-            bot.sendMessage(data.message.chat.id, __wordsCollectingWelcomeText(data.hetWelcome, data.players, false), __wordsCollectingWelcomeButton())
+            bot.sendMessage(data.currentMsg.chat.id, __wordsCollectingWelcomeText(data.hetWelcome, data.players, false), __wordsCollectingWelcomeButton())
                 .then((new_msg) => {
-                    data.message = new_msg;
+                    data.currentMsg = new_msg;
 
                     const admin = _.first(data.players);
                     if (!admin) return log.error(new Error('Can\'t find admin'));
@@ -40,7 +40,7 @@ export function startWordsCollecting(bot: TelegramBot, msg: Message) {
                             if (err) return log.error(err);
                             if (!m) return log.error(new Error('Can\'t sent AdminWordsCollection'));
 
-                            admin.message = m;
+                            admin.currentMsg = m;
                             data.players = _.map(data.players, (p)=>{p.words = []; return p;});
 
                             Db.saveSession(guid, data, (err) => {
@@ -74,7 +74,7 @@ export function restartWordsCollecting(bot: TelegramBot, msg: Message) {
                 if (err) return log.error(err);
 
                 bot.editMessageText(__wordsCollectingWelcomeText(data.hetWelcome, data.players, false),
-                    __wordsCollectingWelcomeButtonEdit(data.message));
+                    __wordsCollectingWelcomeButtonEdit(data.currentMsg));
 
                 async.eachSeries(data.players, (player, callback) => {
                     sendOrStore(bot, player.id, __wordsCollectingPlayerWelcomeText(), undefined, callback);
@@ -89,7 +89,7 @@ export function restartWordsCollecting(bot: TelegramBot, msg: Message) {
 export function collectWord(bot: TelegramBot, msg: Message) {
     if (!msg.from || !msg.from.id) return log.error(new Error('Error with Telegram'));
 
-    if (msg.chat.id !== msg.from.id) return;
+    if (msg.chat.id !== msg.from.id || msg.text == '/start') return;
 
     Db.loadPlayerSession(msg.chat.id, (err, guid) => {
         if (err) return log.error(err);
@@ -126,7 +126,7 @@ export function collectWord(bot: TelegramBot, msg: Message) {
                             stopWordsCollection(bot, msg);
                         else
                             bot.editMessageText(__wordsCollectingWelcomeText(data.hetWelcome, data.players, isFinished),
-                                __wordsCollectingWelcomeButtonEdit(data.message));
+                                __wordsCollectingWelcomeButtonEdit(data.currentMsg));
                     });
                 }
             }
@@ -143,21 +143,30 @@ export function stopWordsCollection(bot: TelegramBot, msg: Message) {
             if (err) return log.error(err);
             if (!data) return log.error(new Error("Can't find session data"));
 
-            data.flow = "pairs-building";
+            data.flow = "teams-building";
+
+            data.words = _
+                .chain(data.players)
+                .reduce((words, player) => {
+                        words = _.concat(words, player.words || []);
+                        return words;
+                    }, <Array<string>>[])
+                .shuffle()
+                .value()
 
             Db.saveSession(guid, data, (err) => {
                 if (err) return log.error(err);
 
                 const admin = _.first(data.players);
-                if (!admin || !admin.message) return  log.error('Can\'t find Admin');
+                if (!admin || !admin.currentMsg) return  log.error('Can\'t find Admin');
 
                 bot.editMessageText(__buildAdminWordsCollectionText(data.hetWelcome, true),
-                    __buildAdminWordsCollectionButtonsEdit(guid, admin.message, true));
+                    __buildAdminWordsCollectionButtonsEdit(guid, admin.currentMsg, true));
 
                 bot.editMessageText(__wordsCollectingWelcomeText(data.hetWelcome, data.players, true),
-                    __wordsCollectingWelcomeButtonEdit(data.message));
+                    __wordsCollectingWelcomeButtonEdit(data.currentMsg));
 
-                buildPairs(bot,msg);
+                buildTeams(bot,msg);
             });
         });
 
@@ -205,7 +214,7 @@ function __wordsCollectingWelcomeText(hetWelcome: string, players: Array<Player>
     const users = _
         .chain(players)
         .map((m) => {
-            return '  - ' + userToText(m) + ' - ' + (m.words?m.words.length.toString():'0')
+            return '  - ' + playerToText(m) + ' - ' + (m.words?m.words.length.toString():'0')
         })
         .join('\n')
         .value();

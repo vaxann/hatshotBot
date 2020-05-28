@@ -13,12 +13,12 @@ import {SendMessageOptions, User, Message} from "node-telegram-bot-api";
 
 const dbInstance:string = Config.get('dbInstance');
 const DB = level(dbInstance,  { valueEncoding: 'json' });
-const ParsSession = sublevel(DB, 'pars_session');
+const HatSessions = sublevel(DB, 'hat_session');
 const Messages = sublevel(DB, 'messages');
 const Players = sublevel(DB, 'players');
 
 export type MessageStorageAction = "send" | "edit";
-export type Flow = "players-collecting" | "words-collecting" | "pairs-building" | "gaming" | "scores-counting";
+export type Flow = "players-collecting" | "words-collecting" | "teams-building" | "gaming" | "scores-counting";
 
 export interface IMessageStorage {
     action: MessageStorageAction,
@@ -28,16 +28,35 @@ export interface IMessageStorage {
 
 export interface Player extends User {
     words?: Array<string>,
+    wonWords?: Array<string>,
     isAdmin? : boolean,
-    message? : Message
+    currentMsg? : Message,
+    teamId?: number|Array<number>
 }
 
-export interface IPairingData {
+export interface Team {
+    id:number,
+    firstPlayerId: number,
+    secondPlayerId: number,
+    wonWords?: Array<string>
+}
+
+export interface Direction extends Team {
+    teamId : number;
+}
+
+export interface IHatData {
     hetWelcome : string,
     players : Array<Player>,
-    pairs?: Array<Array<Player>>,
-    message : Message,
-    flow : Flow
+    teams?: Array<Team>,
+    directions?: Array<Direction>,
+    currentMsg : Message,
+    currentDirectionId?: number,
+    flow : Flow,
+    words?: Array<string>,
+    currentWord?: string,
+    timer?:number
+    getNextWord?:boolean;
 }
 
 export class ExistMemberError extends Error {
@@ -49,23 +68,26 @@ export class ExistMemberError extends Error {
     }
 }
 
-export function saveSession(guid: string, data:IPairingData, callback:(err?:Error|null)=>void):void {
-    ParsSession.put(guid, data, (err: Error)=>{
-        if (err) return callback(err);
-
-        callback();
+export function saveSession(guid: string, data:IHatData, callback?:(err?:Error|null, data?:IHatData)=>void):void {
+    HatSessions.put(guid, data, (err: Error)=>{
+        if (callback) {
+            if (err) return callback(err);
+            callback(null, data);
+        } else {
+            if (err) return log.error(err);
+        }
     });
 }
 
-export function loadSession(guid:string, callback:(err?:Error|null,data?:IPairingData)=>void):void {
-    ParsSession.get(guid, (err: Error, data:IPairingData)=>{
+export function loadSession(guid:string, callback:(err?:Error|null,data?:IHatData)=>void):void {
+    HatSessions.get(guid, (err: Error, data:IHatData)=>{
         if (err) return callback(err);
 
         callback(null,data);
     });
 }
 
-export function addUserToSession(guid:string, user:User, callback:(err?:Error|null,data?:IPairingData)=>void):void {
+export function addUserToSession(guid:string, user:User, callback:(err?:Error|null,data?:IHatData)=>void):void {
    //TODO Проверть что юзер не играет в другой игре
 
     loadSession(guid, (err, data)=>{
@@ -77,7 +99,7 @@ export function addUserToSession(guid:string, user:User, callback:(err?:Error|nu
 
         data.players.push(user);
 
-        ParsSession.put(guid, data, (err: Error)=>{
+        HatSessions.put(guid, data, (err: Error)=>{
             if (err) return callback(err);
 
             callback(null, data);

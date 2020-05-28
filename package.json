@@ -15,9 +15,10 @@
   "keywords": [],
   "author": "Ivan Abramenko",
   "license": "MIT",
-  "devDependencies": {},
+  "devDependencies": {
+    "@types/async": "^3.2.0"
+  },
   "dependencies": {
-    "@types/async": "^3.0.3",
     "@types/lodash": "^4.14.123",
     "@types/moment": "^2.13.0",
     "@types/nconf": "^0.10.0",
@@ -25,7 +26,7 @@
     "@types/node-telegram-bot-api": "^0.30.4",
     "@types/shelljs": "^0.8.5",
     "@types/winston": "^2.4.4",
-    "async": "^3.1.0",
+    "async": "^3.2.0",
     "guid-typescript": "^1.0.9",
     "level": "^6.0.0",
     "lodash": "^4.17.11",

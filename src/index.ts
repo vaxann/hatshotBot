@@ -16,10 +16,12 @@ import * as Db from "./database";
 // @ts-ignore
 import Agent from "socks5-https-client/lib/Agent"
 import {finishingGame} from "./flow/scores-counting";
-import {buildPairs} from "./flow/pairs-building";
+import {buildTeams, finishTeamsBuilding} from "./flow/teams-building";
+import {getWord} from "./flow/gaming";
 
 enum ActionType {
-    addPlayer,  stopPlayersCollecting, stopWordsCollecting, restartWordsCollecting, rebuildPairs , startGame
+    addPlayer,  stopPlayersCollecting, stopWordsCollecting, restartWordsCollecting, rebuildTeams , startGame,
+        getWord
 }
 
 //TODO: add config validation
@@ -48,7 +50,13 @@ bot.onText(/\/info$|\/start$/, (msg)=>{
     startWordsCollecting(bot, msg);
 });*/
 
+bot.onText(/\/buildTeams$/, (msg) => {
+    log.debug(msg);
+    buildTeams(bot,msg);
+});
+
 bot.onText(/\/unhat$/, (msg) => {
+    log.debug(msg);
     finishingGame(bot, msg);
 });
 
@@ -88,8 +96,16 @@ bot.on('callback_query', (query) => {
             stopWordsCollection(bot, msg);
             break;
         }
-        case ActionType.rebuildPairs: {
-            buildPairs(bot,msg,true);
+        case ActionType.rebuildTeams: {
+            buildTeams(bot,msg,true);
+            break;
+        }
+        case ActionType.startGame: {
+            finishTeamsBuilding(bot, msg);
+            break;
+        }
+        case ActionType.getWord: {
+            getWord(bot, msg);
             break;
         }
     }

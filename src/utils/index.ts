@@ -7,12 +7,12 @@ import TelegramBot, {
 } from "node-telegram-bot-api";
 import * as Db from "../database";
 import async from "async"
+import _ from "lodash";
 
 import Log from "../log";
 const log = Log(module);
 
-import {callbackify} from "util";
-import {IMessageStorage} from "../database";
+import {IMessageStorage, Player, Team} from "../database";
 
 
 export function sendOrStore(bot:TelegramBot, chat_id:number, text:string, options?:SendMessageOptions, callback?:(err?:Error|null, msg?:Message)=>void):void {
@@ -69,8 +69,8 @@ export function storeSessionToPlayer(guid: string, callback:(err?:Error|null)=>v
                 Db.addSessionToPlayer(player.id, guid, callback);
             },
             (err)=>{
-            if (err) return callback(err);
-                Db.addSessionToPlayer(data.message.chat.id, guid, callback);
+                if (err) return callback(err);
+                Db.addSessionToPlayer(data.currentMsg.chat.id, guid, callback);
             });
     });
 }
@@ -86,22 +86,33 @@ export function removeSessionToPlayer(guid: string, callback:(err?:Error|null)=>
             },
             (err)=>{
                 if (err) return callback(err);
-                Db.deletePlayerSession(data.message.chat.id, callback);
+                Db.deletePlayerSession(data.currentMsg.chat.id, callback);
             });
     });
 }
 
+export function playerIdToText(playerId:number, players:Array<Player>) {
+    const player = _.find(players, (player)=> {return player.id === playerId});
 
-export function userToText(user: User): string {
-    let text = user.first_name;
+    if (!player) throw new Error('Can\'t find player')
 
-    if (user.last_name)
-        text += ` ${user.last_name}`;
+    return playerToText(player);
+}
 
-    if (user.username)
-        text += ` (@${user.username})`;
+export function getPlayerById(playerId:number, players:Array<Player>):Player|undefined {
+    return _.find(players, (player)=> {return player.id === playerId});
+}
+
+export function playerToText(player: Player): string {
+    let text = player.first_name;
+
+    if (player.last_name)
+        text += ` ${player.last_name}`;
+
+    if (player.username)
+        text += ` (@${player.username})`;
     else
-        text += ` (<a href="tg://user?id=${user.id}">${user.first_name}</a>)`;
+        text += ` (<a href="tg://user?id=${player.id}">${player.first_name}</a>)`;
 
     return text;
 }

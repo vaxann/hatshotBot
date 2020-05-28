@@ -10,7 +10,7 @@ import async from "async";
 import {Guid} from "guid-typescript";
 
 import * as Db from "../database";
-import {sendOrStore, storeSessionToPlayer, userToText} from "../utils";
+import {sendOrStore, storeSessionToPlayer, playerToText} from "../utils";
 import {startWordsCollecting} from "./words-collecting";
 import Log from "../log";
 import {callbackify} from "util";
@@ -39,7 +39,7 @@ export function startPlayersCollection(bot: TelegramBot, msg: Message, match: Re
         // send to Chat
         bot.sendMessage(msg.chat.id, __buildPlayersCollectionText(hetWelcome, players,false), __buildPlayersCollectionButtons(guid,false))
             .then((new_msg)=>{
-                const data:Db.IPairingData = {hetWelcome: hetWelcome, players :players, message:new_msg, flow:"players-collecting"};
+                const data:Db.IHatData = {hetWelcome: hetWelcome, players :players, currentMsg:new_msg, flow:"players-collecting"};
 
                 Db.saveSession(guid, data,(err) => {
                     if (err) return log.error(err);
@@ -50,6 +50,8 @@ export function startPlayersCollection(bot: TelegramBot, msg: Message, match: Re
 
                     // send to User
                     sendOrStore(bot, msg.from.id, __buildUserPlayersCollectionText(hetWelcome));
+
+                    Db.addSessionToPlayer(data.currentMsg.chat.id, guid, (err)=>{if(err) log.error(err)});
                 });
             });
     });
@@ -64,7 +66,7 @@ export function stopPlayersCollection(bot: TelegramBot, guid: string, msg: Messa
         async.waterfall([
             (callback:(err?:Error|null)=>void) => {
                 bot.editMessageText(__buildPlayersCollectionText(data.hetWelcome, data.players, true),
-                    __buildPlayersCollectionButtonsEdit(guid, data.message, true)).then(()=>{callback()}, (err)=>{callback(err)});
+                    __buildPlayersCollectionButtonsEdit(guid, data.currentMsg, true)).then(()=>{callback()}, (err)=>{callback(err)});
             },
             (callback:(err?:Error|null)=>void) => {
                 bot.editMessageText(__buildAdminPlayersCollectionText(data.hetWelcome, true),
@@ -151,21 +153,21 @@ function __buildAdminPlayersCollectionButtons(guid: string, isFinished: boolean)
 
     const options: SendMessageOptions = {parse_mode: 'HTML'};
 
-    if (!isFinished)
+if (!isFinished)
         options.reply_markup = {inline_keyboard: inline_keyboard};
 
     return options;
 }
 
 function __buildResultText(pairingWelcome: string, member: User) {
-    return `Результат распредления для "${pairingWelcome}", ваша пара:\n  - ${userToText(member)}`;
+    return `Результат распредления для "${pairingWelcome}", ваша пара:\n  - ${playerToText(member)}`;
 }
 
 function __buildPlayersCollectionText(hetWelcome: string, players: Array<User>, isFinished: boolean): string {
     const users = _
         .chain(players)
         .map((m) => {
-            return '  - ' + userToText(m)
+            return '  - ' + playerToText(m)
         })
         .join('\n')
         .value();
