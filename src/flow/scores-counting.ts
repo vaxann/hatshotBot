@@ -11,10 +11,7 @@ import {IHatData, Player} from "../database";
 
 
 export function finishingGame(bot: TelegramBot, msg: Message) {
-    if (!msg.from || !msg.from.id) return log.error(new Error('Error with mgs'));
 
-    if (msg.chat.id === msg.from.id)
-        return bot.sendMessage(msg.chat.id, "Извините, закончить игру в \"Шапку\" возможно только в групповом чате");
 
     Db.loadPlayerSession(msg.chat.id, (err, guid) => {
         if (err) return log.error(err);
@@ -23,6 +20,10 @@ export function finishingGame(bot: TelegramBot, msg: Message) {
         Db.loadSession(guid, (err, data) => {
             if (err) return log.error(err);
             if (!data) return log.error(new Error(`Can't find session data by guid=${guid}`));
+
+            if (!msg.from || !msg.from.id) return log.error(new Error('Error with mgs'));
+            if (msg.chat.id === msg.from.id)
+                return bot.sendMessage(msg.chat.id, __buildEndGameErrorText(data.hetWelcome));
 
             removeSessionToPlayer(guid, (err)=>{
                 if (err) return log.error(err);
@@ -51,6 +52,7 @@ export function scoresCounting(bot: TelegramBot, msg: Message) {
         Db.loadSession(guid, (err, data) => {
             if (err) return log.error(err);
             if (!data) return log.error(new Error(`Can't find session data by guid=${guid}`));
+            if (data.flow !== 'scores-counting') return log.error(new Error('scores-counting isn\'t start'));
 
             // Подсчет статистики
             _.each(data.directions, (direction)=>{
@@ -77,12 +79,24 @@ function __buildEndGameText(hetWelcome: string) {
     return `Игра "${hetWelcome}" окончена`;
 }
 
+function __buildEndGameErrorText(hetWelcome: string) {
+    return `Извините, закончить игру "${hetWelcome}" возможно только в групповом чате`;
+}
+
 function __buildStatisticText(data:IHatData) {
     return _.reduce(data.teams, (text, team)=>{
         if (!team.wonWords) team.wonWords = [];
 
-        text += `${team.id + 1} команда (${team.wonWords.length}):\n  - ${playerIdToText(team.firstPlayerId, data.players)}\n  - ${playerIdToText(team.secondPlayerId, data.players)}\n\n`;
+        const firstPlayerDirection = _.find(data.directions, (direction)=>{return team.id === direction.teamId && direction.secondPlayerId === team.firstPlayerId});
+        const firstPlayerWords = (firstPlayerDirection)?firstPlayerDirection.wonWords||[]:[];
+        const secondPlayerDirection = _.find(data.directions, (direction)=>{return team.id === direction.teamId && direction.secondPlayerId === team.secondPlayerId});
+        const secondPlayerWords = (secondPlayerDirection)?secondPlayerDirection.wonWords||[]:[];
+
+        text += `\n\n${team.id + 1} команда:\n`+
+                `  - ${playerIdToText(team.firstPlayerId, data.players)}: ${firstPlayerWords.length}\n`+
+                `  - ${playerIdToText(team.secondPlayerId, data.players)}: ${secondPlayerWords.length}\n`+
+                `  Всего: ${team.wonWords.length}`;
 
         return text;
-    }, `4/5 Объяснение/угадывание слов "${data.hetWelcome}":\n\n`);
+    }, `5/5 Результаты игры "${data.hetWelcome}":`);
 }

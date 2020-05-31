@@ -17,7 +17,7 @@ import * as Db from "./database";
 import Agent from "socks5-https-client/lib/Agent"
 import {finishingGame} from "./flow/scores-counting";
 import {buildTeams, finishTeamsBuilding} from "./flow/teams-building";
-import {getWord} from "./flow/gaming";
+import {acceptLastWord, getWord} from "./flow/gaming";
 
 enum ActionType {
     addPlayer,  stopPlayersCollecting, stopWordsCollecting, restartWordsCollecting, rebuildTeams , startGame,
@@ -53,6 +53,21 @@ bot.onText(/\/info$|\/start$/, (msg)=>{
 bot.onText(/\/buildTeams$/, (msg) => {
     log.debug(msg);
     buildTeams(bot,msg);
+});
+
+bot.onText(/\/undo$/, (msg) => {
+    log.debug(msg);
+    //buildTeams(bot,msg);
+});
+
+bot.onText(/\/accept$/, (msg) => {
+    log.debug(msg);
+    acceptLastWord(bot,msg);
+});
+
+bot.onText(/\/erase$/, (msg) => {
+    log.debug(msg);
+    //buildTeams(bot,msg);
 });
 
 bot.onText(/\/unhat$/, (msg) => {

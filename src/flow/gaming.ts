@@ -88,6 +88,7 @@ export function selectPlayer(bot:TelegramBot, msg: Message, isFirstSelection:boo
 }
 
 
+
 export function getWord(bot:TelegramBot, msg: Message) {
     Db.loadPlayerSession(msg.chat.id, (err, guid) => {
         if (err) return log.error(err);
@@ -113,13 +114,9 @@ export function getWord(bot:TelegramBot, msg: Message) {
 
                         const direction = data.directions[data.currentDirectionId];
 
-                        if (!data.words) {
-                            data.timer = 0;
-                            return callback(null, data);
-                        }
-
                         if (!data.timer || !data.currentWord) {
                             // Первое слово
+                            data.words = _.shuffle(data.words); // перемешиваем
                             data.currentWord = _.first(data.words);
                             data.words = _.tail(data.words);
                             data.timer = 16;
@@ -137,60 +134,49 @@ export function getWord(bot:TelegramBot, msg: Message) {
                             bot.sendMessage(direction.secondPlayerId, __buildSecondPlayerVonText(data.currentWord, direction.firstPlayerId, data.players));
 
                             //Новое слово
-                            data.currentWord = _.first(data.words);
-                            data.words = _.tail(data.words);
+                            if (data.words !== undefined && data.words.length !== 0) {
+                                data.currentWord = _.first(data.words);
+                                data.words = _.tail(data.words);
+                            } else {
+                                data.timer = undefined;
+                                data.currentWord = undefined;
+                            }
                         }
 
-                        data.timer--; //Уменьшаем таймер на 1
+                        if (data.timer !== undefined)
+                            data.timer--; //Уменьшаем таймер на 1
 
                         //Показать результат
                         Db.saveSession(guid, data, (err)=>{
                             if (err) return callback(err);
-
-                            async.parallel([
-                                    (callback) => { // обновляю таймер на станице пользователя
-                                        const player = _.find(data.players, (player)=>{return player.id === direction.firstPlayerId});
-                                        if (!player || !player.currentMsg) return callback(new Error("Can't find player"));
-
-                                        bot.editMessageText(
-                                            __buildPlayerOnGameText(data.currentWord||'',data.timer||0),
-                                            __buildPlayerOnGameOptions(guid, player.currentMsg)).then(
-                                                ()=>{callback()},
-                                                ()=>{callback()});
-
-                                    },
-                                    (callback) => { // обновляю таймер на общей старнице
-                                        bot.editMessageText(
-                                            __buildAllDirectionsText(data.hetWelcome, data.timer, data.words||[], direction, data.directions||[], data.players),
-                                            __buildAllDirectionsOptions(data.currentMsg)).then(
-                                                ()=>{callback()},
-                                                ()=>{callback()});
-                                    }
-                                ],
-                                (err)=>{
-                                    if (err) return callback(err);
-                                    setTimeout(callback, 1000, null, data);
-                                });
+                            __drawGameStatus(data, direction, bot, guid, callback);
                         });
                     });
                 },
                 (data, callback)=>{
-                    callback(null, !(!!data.timer && data.timer > 0))
+                    callback(null, !(data.timer !== undefined && data.timer > 0))
                 },
                 (err,data)=>{
                     if (err) return log.error(err);
                     if (!data) return log.error(new Error('Can\'t find data'));
 
-                    if (data.words && data.currentWord)
+                    if (data.words !== undefined && data.currentWord) {
                         data.words.push(data.currentWord);
+                        if (!data.directions || data.currentDirectionId === undefined) return log.error(new Error('No enough direction'));
+                        const direction = data.directions[data.currentDirectionId];
+                        data.lastWord = {directionId:direction.id, word: data.currentWord};
+                    }
 
                     data.currentWord = undefined;
                     data.timer = undefined;
                     data.getNextWord = undefined;
                     bot.deleteMessage(msg.chat.id, msg.message_id.toString());
 
+                    if (data.words !== undefined && data.words.length == 0)
+                        data.flow = "scores-counting";
+
                     Db.saveSession(guid, data, ()=>{
-                        if (data.words)
+                        if (data.words !== undefined && data.words.length > 0)
                             selectPlayer(bot, msg);
                         else
                             scoresCounting(bot, data.currentMsg);
@@ -199,6 +185,84 @@ export function getWord(bot:TelegramBot, msg: Message) {
             );
         });
     });
+}
+
+
+export function acceptLastWord(bot:TelegramBot, msg: Message) {
+    Db.loadPlayerSession(msg.chat.id, (err, guid) => {
+        if (err) return log.error(err);
+        if (!guid) return log.error(new Error("Can't find session"));
+
+        Db.loadSession(guid, (err, data) => {
+            if (!data || !data.players) return log.error(new Error('No enough players'));
+            if (data.flow !== 'gaming') return log.error(new Error('Game isn\'t start'));
+            if (data.timer) return  log.error(new Error('Can\'t start acceptLastWord when Timer ticking'));
+            if (!data.lastWord) return log.error(new Error('Can\'t acceptLastWord because last word unavailable'));
+            const lastWord = data.lastWord;
+
+            const direction = _.find(data.directions, (direct)=>{return direct.id === lastWord.directionId});
+            if (!direction) return log.error(new Error('No enough direction'));
+
+            if (direction.wonWords)
+                direction.wonWords.push(lastWord.word);
+            else
+                direction.wonWords = [lastWord.word];
+
+            if (!data.words) return log.error(new Error('data.words is empty'));
+            _.remove(data.words, (word)=>{return word === lastWord.word});
+
+            data.lastWord = undefined;
+
+            Db.saveSession(guid, data, (err)=>{
+                if (err) return log.error(err);
+
+                bot.sendMessage(direction.firstPlayerId, __buildFirstPlayerVonText(lastWord.word, direction.secondPlayerId, data.players));
+                bot.sendMessage(direction.secondPlayerId, __buildSecondPlayerVonText(lastWord.word, direction.firstPlayerId, data.players));
+
+                if (!data.directions || data.currentDirectionId === undefined) return log.error(new Error('No enough direction'));
+                __drawGameStatus(data, data.directions[data.currentDirectionId], bot, guid, (err)=>{if (err) log.error(err)});
+            });
+        });
+    });
+}
+
+function __drawGameStatus(data: IHatData, direction: Direction, bot: TelegramBot, guid: string, callback: (err?: (Error | null), data?: IHatData) => void) {
+    async.parallel([
+            (callback) => { // обновляю таймер на станице пользователя
+                const player = _.find(data.players, (player) => {
+                    return player.id === direction.firstPlayerId
+                });
+                if (!player || !player.currentMsg) return callback(new Error("Can't find player"));
+
+                if (!data.currentWord) return callback();
+
+                bot.editMessageText(
+                    __buildPlayerOnGameText(data.currentWord || '', data.timer || 0),
+                    __buildPlayerOnGameOptions(guid, player.currentMsg)).then(
+                    () => {
+                        callback()
+                    },
+                    () => {
+                        callback()
+                    });
+
+            },
+            (callback) => { // обновляю таймер на общей старнице
+                bot.editMessageText(
+                    __buildAllDirectionsText(data.hetWelcome, data.timer, data.words || [], direction, data.directions || [], data.players),
+                    __buildAllDirectionsOptions(data.currentMsg)).then(
+                    () => {
+                        callback()
+                    },
+                    () => {
+                        callback()
+                    });
+            }
+        ],
+        (err) => {
+            if (err) return callback(err);
+            setTimeout(callback, 1000, null, data);
+        });
 }
 
 
@@ -254,17 +318,16 @@ function __buildAllDirectionsOptions(msg: Message):EditMessageTextOptions {
 }
 
 function __buildAllDirectionsText(hetWelcome:string, timer: number|undefined, words:Array<string>, currentDirection:Direction, directions: Array<Direction>, players:Array<Player>):string {
-    let i :number = 0;
-    return _.reduce(directions, (text, direction)=>{
+    let i: number = 0;
+    return _.reduce(directions, (text, direction) => {
         i++;
         let wonWords = '';
         if (direction.wonWords)
             wonWords = _.join(direction.wonWords, ', ');
 
-        text += `${(currentDirection.id === direction.id)?'>':''} ${i} направление:\n  - ${playerIdToText(direction.firstPlayerId,players)}\n`+
-                `  - ${playerIdToText(direction.secondPlayerId,players)}\n  Угадано: ${wonWords}\n\n`;
+        text += `\n\n${(currentDirection.id === direction.id) ? '>' : ''} ${i} направление:\n  - ${playerIdToText(direction.firstPlayerId, players)}\n` +
+            `  - ${playerIdToText(direction.secondPlayerId, players)}\n  Угадано: ${wonWords}`;
 
         return text;
-    }, `4/5 Объяснение/угадывание слов "${hetWelcome}":\n\nТаймер: ${timer||'Остановлен'}\nОсталось слов: ${words.length}\n\n`);
+    }, `4/5 Объяснение/угадывание слов "${hetWelcome}":\n\nТаймер: ${timer || 'Остановлен'}\nОсталось слов: ${words.length}`);
 }
-

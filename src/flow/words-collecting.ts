@@ -143,7 +143,6 @@ export function stopWordsCollection(bot: TelegramBot, msg: Message) {
             if (err) return log.error(err);
             if (!data) return log.error(new Error("Can't find session data"));
 
-            data.flow = "teams-building";
 
             data.words = _
                 .chain(data.players)
@@ -152,7 +151,12 @@ export function stopWordsCollection(bot: TelegramBot, msg: Message) {
                         return words;
                     }, <Array<string>>[])
                 .shuffle()
-                .value()
+                .value();
+
+            if (data.words.length === 0)
+                return bot.sendMessage(msg.chat.id, __wordsCollectingErrCount());
+
+            data.flow = "teams-building";
 
             Db.saveSession(guid, data, (err) => {
                 if (err) return log.error(err);
@@ -207,7 +211,7 @@ function __buildAdminWordsCollectionText(pairingWelcome: string, isFinished: boo
     if (isFinished)
         return `Написание слов для игры "${pairingWelcome}" завершено`;
 
-    return `Идет написание слов "${pairingWelcome}", можете управлять процессом, как, только участники напишут по 5 слов, автоматически произойдет формировнаие команд`;
+    return `Идет написание слов "${pairingWelcome}", можете управлять процессом, как, только участники напишут по 5 слов, автоматически произойдет формировние команд`;
 }
 
 function __wordsCollectingWelcomeText(hetWelcome: string, players: Array<Player>, isFinished: boolean): string {
@@ -250,4 +254,8 @@ function __wordsCollectingWelcomeButton(): SendMessageOptions {
             inline_keyboard: inline_keyboard
         }
     };
+}
+
+function __wordsCollectingErrCount() {
+    return "Нужно добавить хотябы одно слово";
 }

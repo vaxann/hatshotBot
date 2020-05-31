@@ -45,6 +45,11 @@ export interface Direction extends Team {
     teamId : number;
 }
 
+export interface ILastWord {
+    directionId : number,
+    word: string
+}
+
 export interface IHatData {
     hetWelcome : string,
     players : Array<Player>,
@@ -56,7 +61,8 @@ export interface IHatData {
     words?: Array<string>,
     currentWord?: string,
     timer?:number
-    getNextWord?:boolean;
+    getNextWord?:boolean,
+    lastWord?: ILastWord
 }
 
 export class ExistMemberError extends Error {

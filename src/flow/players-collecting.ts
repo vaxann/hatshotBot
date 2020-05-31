@@ -61,7 +61,11 @@ export function startPlayersCollection(bot: TelegramBot, msg: Message, match: Re
 
 export function stopPlayersCollection(bot: TelegramBot, guid: string, msg: Message) {
     Db.loadSession(guid, (err, data) => {
-        if (!data || !data.players) return log.error(new Error('No enough players'));
+        if (!data || !data.players) return log.error(new Error(`No players in game=${guid}`));
+        if (!msg.from || !msg.from.id) return log.error(new Error('Error with Telegram'));
+
+        if (data.players.length < 3 || data.players.length > 10)
+            return bot.sendMessage(msg.chat.id, __buildPlayerCountErrorText());
 
         async.waterfall([
             (callback:(err?:Error|null)=>void) => {
@@ -188,4 +192,8 @@ function __buildAdminPlayersCollectionText(pairingWelcome: string, isFinished: b
 
 function __buildUserPlayersCollectionText(pairingWelcome: string): string {
     return `Вы подтвердили, что участвуете в игре "${pairingWelcome}", когда все подтвердят участие, возможно будет начать написание слов`;
+}
+
+function __buildPlayerCountErrorText():string {
+    return "Игроков должно быть больше 2-х и меньше 11-ти";
 }
