@@ -33,7 +33,7 @@
     "moment": "^2.24.0",
     "nconf": "^0.10.0",
     "node-telegram-bot-api": "^0.30.0",
-    "shelljs": "^0.8.3",
+    "shelljs": "^0.8.5",
     "socks5-https-client": "^1.2.1",
     "sublevel": "^2.4.0",
     "typescript": "^3.4.5",
